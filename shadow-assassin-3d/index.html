@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Shadow Assassin 3D</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#080d13;color:#fff;font-family:system-ui,Arial}
+#game{position:fixed;inset:0}canvas{display:block}
+#hud{position:fixed;inset:0;pointer-events:none}
+.panel{background:linear-gradient(135deg,#101d2be8,#07111be8);border:1px solid #52718b88;border-radius:12px;padding:10px 14px;box-shadow:0 8px 28px #0008}
+#top{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+#stats{font-size:13px;line-height:1.6}#mission{max-width:48%;font-size:13px;text-align:right}
+#health{height:7px;width:150px;background:#293744;border-radius:8px;overflow:hidden;margin-top:4px}#health i{display:block;height:100%;background:linear-gradient(90deg,#20d17c,#b5f55a);width:100%}
+#toast{position:absolute;top:92px;left:50%;transform:translateX(-50%);font-weight:700;text-shadow:0 2px 8px #000;text-align:center;white-space:nowrap}
+#help{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:12px;opacity:.85;text-align:center}
+#start,#gameover{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at center,#15283bdc,#03070cf2);z-index:5}
+.modal{width:min(92vw,460px);padding:28px;text-align:center;background:#0c1724ed;border:1px solid #55718b;border-radius:20px;box-shadow:0 20px 80px #000}
+h1{margin:0 0 8px;font-size:clamp(28px,6vw,42px);letter-spacing:1px}p{color:#b7c8d8;line-height:1.5}
+button{border:0;border-radius:12px;padding:13px 20px;font-weight:800;background:linear-gradient(120deg,#ffc04d,#ff7a28);color:#1b1205;font-size:15px}
+#mobile{display:none;position:fixed;bottom:18px;left:14px;right:14px;justify-content:space-between;align-items:end;pointer-events:none}
+.pad,.actions{pointer-events:auto;display:grid;gap:6px}.pad{grid-template-columns:44px 44px 44px;grid-template-rows:44px 44px 44px}.pad button,.actions button{padding:0;width:44px;height:44px;border-radius:50%;background:#16283ddd;color:white;border:1px solid #8aa9c2;font-size:18px;touch-action:none}.pad .up{grid-column:2}.pad .left{grid-column:1;grid-row:2}.pad .down{grid-column:2;grid-row:2}.pad .right{grid-column:3;grid-row:2}.actions{grid-template-columns:repeat(2,48px)}.actions button{width:48px;height:48px;font-size:11px}
+@media(max-width:800px){#mobile{display:flex}#help{bottom:126px}#mission{max-width:54%}#stats{font-size:11px}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="hud">
+ <div id="top">
+  <div class="panel" id="stats">❤️ <span id="hp">100</span>% <div id="health"><i id="hpbar"></i></div>🪙 <span id="coins">0</span><br>LEVEL <span id="level">1</span> · TAKEDOWNS <span id="kills">0</span></div>
+  <div class="panel" id="mission"><b>MISSION</b><br><span id="objective">Take down all guards and reach the extraction zone.</span></div>
+ </div>
+ <div id="toast"></div>
+ <div id="help">WASD / Arrow keys: move · Mouse: rotate camera · E: silent takedown · SPACE: attack · SHIFT: sneak</div>
+</div>
+<div id="mobile">
+ <div class="pad"><button class="up" data-key="w">▲</button><button class="left" data-key="a">◀</button><button class="down" data-key="s">▼</button><button class="right" data-key="d">▶</button></div>
+ <div class="actions"><button data-action="sneak">SNEAK</button><button data-action="take">TAKE<br>DOWN</button><button data-action="attack">ATTACK</button><button data-action="next">NEXT<br>LEVEL</button></div>
+</div>
+<div id="start"><div class="modal"><h1>SHADOW<br>ASSASSIN 3D</h1><p>A cinematic stealth-action mission. Stay out of sight, approach guards from behind, collect intel and escape.</p><p><b>Controls:</b> WASD to move · mouse drag to orbit · E takedown · Space attack · Shift sneak</p><button id="play">START MISSION</button></div></div>
+<div id="gameover" style="display:none"><div class="modal"><h1 id="endtitle">MISSION FAILED</h1><p id="endtext">Your mission has ended.</p><button id="retry">RETRY MISSION</button></div></div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+const host=document.querySelector('#game');
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x91a7b4);scene.fog=new THREE.Fog(0x91a7b4,24,70);
+const camera=new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,150);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;host.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xddeeff,0x33402c,2));
+const sun=new THREE.DirectionalLight(0xffe4c2,3.2);sun.position.set(-12,22,10);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-30;sun.shadow.camera.right=30;sun.shadow.camera.top=30;sun.shadow.camera.bottom=-30;scene.add(sun);
+const mat=(color,rough=.8,metal=0)=>new THREE.MeshStandardMaterial({color,roughness:rough,metalness:metal});
+const floorMat=mat(0x596a65),wallMat=mat(0x69777b),darkMat=mat(0x273641),crateMat=mat(0x76563b),metalMat=mat(0x344550,.35,.7);
+let level=1,coins=0,kills=0,hp=100,guards=[],walls=[],loot=[],player,exitZone,gameActive=false,toastTimer=0;
+const keys={};let cameraYaw=0,dragging=false,lastX=0;
+function box(x,y,z,sx,sy,sz,m,shadow=true){let o=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),m);o.position.set(x,y,z);o.castShadow=shadow;o.receiveShadow=true;scene.add(o);return o}
+function cylinder(x,y,z,r,h,m){let o=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,16),m);o.position.set(x,y,z);o.castShadow=true;scene.add(o);return o}
+function makePerson(color,isPlayer=false){
+ const g=new THREE.Group(),body=new THREE.Mesh(new THREE.CapsuleGeometry(.34,.65,5,10),mat(color,.65));body.position.y=.85;body.castShadow=true;g.add(body);
+ const head=new THREE.Mesh(new THREE.SphereGeometry(.24,16,12),mat(isPlayer?0xc49b78:0xb88d70));head.position.y=1.48;head.castShadow=true;g.add(head);
+ const pack=new THREE.Mesh(new THREE.BoxGeometry(.48,.48,.2),mat(isPlayer?0x101c2b:0x333b43));pack.position.set(0,1.0,-.27);g.add(pack);
+ const legmat=mat(isPlayer?0x172b40:0x242b30);for(let s of [-1,1]){let leg=new THREE.Mesh(new THREE.CylinderGeometry(.12,.14,.48,10),legmat);leg.position.set(s*.17,.28,0);leg.castShadow=true;g.add(leg)}
+ return g;
+}
+function clearWorld(){for(const o of [...scene.children])if(o.userData.levelObject)scene.remove(o);guards=[];walls=[];loot=[]}
+function addWall(x,z,sx,sz,h=2.4,m=wallMat){let o=box(x,h/2,z,sx,h,sz,m);o.userData.levelObject=true;walls.push({x,z,sx,sz});return o}
+function makeLevel(){
+ clearWorld();scene.background.set(level%2?0x91a7b4:0x6b8290);scene.fog.color.copy(scene.background);
+ let ground=box(0,-.35,0,44,.7,44,floorMat,false);ground.userData.levelObject=true;
+ addWall(0, -21,42,1,3);addWall(0,21,42,1,3);addWall(-21,0,1,42,3);addWall(21,0,1,42,3);
+ addWall(-7,-6,8,1.2,2.6);addWall(5,-10,1.2,9,2.4);addWall(9,3,8,1.2,2.6);addWall(-8,8,1.2,8,2.4);
+ for(let i=0;i<7;i++){let x=(i%4)*4-7,z=Math.floor(i/4)*7-2;let c=box(x,.65,z,1.5,1.3,1.5,crateMat);c.userData.levelObject=true}
+ for(let i=0;i<5;i++){let lamp=cylinder(-15+i*7,2.8,-16,.08,5,metalMat);lamp.userData.levelObject=true}
+ player=makePerson(0x1d354b,true);player.position.set(-16,0,15);scene.add(player);
+ let positions=level===1?[[-9,1],[-1,-13],[12,-5],[13,13]]:[[-12,-12],[-2,2],[11,-12],[14,12],[-13,12],[3,14]];
+ positions.forEach((p,i)=>{let g=makePerson(i%2?0x9a3731:0x48505b);g.position.set(p[0],0,p[1]);g.rotation.y=Math.random()*6.28;scene.add(g);
+ let cone=new THREE.Mesh(new THREE.ConeGeometry(3.3,6.5,24,1,true),new THREE.MeshBasicMaterial({color:0xff4d3d,transparent:true,opacity:.12,side:THREE.DoubleSide,depthWrite:false}));cone.rotation.x=-Math.PI/2;cone.position.set(0,.05,1.8);g.add(cone);
+ guards.push({mesh:g,home:new THREE.Vector3(p[0],0,p[1]),angle:g.rotation.y,alert:0,alive:true,cone,patrol:i%2?1:-1});
+ });
+ exitZone=new THREE.Mesh(new THREE.CylinderGeometry(1.6,1.6,.12,32),new THREE.MeshStandardMaterial({color:0x28e69a,emissive:0x087d4b,emissiveIntensity:1.5,transparent:true,opacity:.8}));exitZone.position.set(16,.05,-16);scene.add(exitZone);exitZone.userData.levelObject=true;
+ for(let i=0;i<4;i++){let p=new THREE.Vector3(-12+i*7,0,level%2?-17:17);let gem=new THREE.Mesh(new THREE.OctahedronGeometry(.38),new THREE.MeshStandardMaterial({color:0xffd34e,metalness:.7,roughness:.2,emissive:0x805000}));gem.position.copy(p).y=1;scene.add(gem);gem.userData.levelObject=true;loot.push(gem)}
+ updateHud();say('Avoid the red vision cones. Find a way behind each guard.');
+}
+function blocked(pos){for(let w of walls)if(Math.abs(pos.x-w.x)<w.sx/2+.45&&Math.abs(pos.z-w.z)<w.sz/2+.45)return true;return false}
+function say(t){document.querySelector('#toast').textContent=t;toastTimer=2.4}
+function updateHud(){document.querySelector('#hp').textContent=Math.max(0,Math.round(hp));document.querySelector('#hpbar').style.width=hp+'%';document.querySelector('#coins').textContent=coins;document.querySelector('#kills').textContent=kills;document.querySelector('#level').textContent=level;document.querySelector('#objective').textContent=`Neutralize ${guards.filter(g=>g.alive).length} guards · collect intel · escape through green extraction`;}
+function takedown(){if(!gameActive)return;let target=null,dist=2.0;for(let g of guards){if(!g.alive)continue;let d=player.position.distanceTo(g.mesh.position);let toward=player.position.clone().sub(g.mesh.position).normalize();let facing=new THREE.Vector3(Math.sin(g.mesh.rotation.y),0,Math.cos(g.mesh.rotation.y));let behind=toward.dot(facing)<-.15;if(d<dist&&behind){target=g;dist=d}}if(target){target.alive=false;scene.remove(target.mesh);kills++;coins+=20;say('SILENT TAKEDOWN +20 COINS');updateHud()}else say('Get close and approach from behind!')}
+function attack(){if(!gameActive)return;let target=null,dmin=2.5;for(let g of guards){if(g.alive){let d=player.position.distanceTo(g.mesh.position);if(d<dmin){target=g;dmin=d}}}if(target){target.alive=false;scene.remove(target.mesh);kills++;coins+=10;say('GUARD ELIMINATED +10');updateHud()}else say('No enemy in range')}
+function move(dx,dz,dt){let v=new THREE.Vector3(dx,0,dz);if(v.lengthSq()===0)return;v.normalize();let speed=keys.Shift?2.1:4.2;v.applyAxisAngle(new THREE.Vector3(0,1,0),cameraYaw);let next=player.position.clone().addScaledVector(v,speed*dt);if(!blocked(next))player.position.copy(next);player.rotation.y=Math.atan2(v.x,v.z)}
+function update(dt){
+ if(!gameActive)return;
+ let dx=(keys.d?1:0)-(keys.a?1:0),dz=(keys.s?1:0)-(keys.w?1:0);move(dx,dz,dt);
+ for(let g of guards){if(!g.alive)continue;let m=g.mesh;m.rotation.y+=Math.sin(performance.now()*.0005+g.home.x)*dt*.22*g.patrol;m.position.x=g.home.x+Math.sin(performance.now()*.00035+g.home.z)*1.8;m.position.z=g.home.z+Math.cos(performance.now()*.00035+g.home.x)*1.8;
+ let to=player.position.clone().sub(m.position);let dist=to.length();let facing=new THREE.Vector3(Math.sin(m.rotation.y),0,Math.cos(m.rotation.y));let seen=to.clone().normalize().dot(facing)>.45&&dist<7;
+ if(seen&&!keys.Shift){g.alert=Math.min(1,g.alert+dt*.8);if(g.alert>.7){hp-=dt*17;if(Math.random()<dt*2)say('YOU HAVE BEEN SPOTTED!');}}
+ else g.alert=Math.max(0,g.alert-dt*.6);
+ g.cone.material.color.set(g.alert>.2?0xffa52e:0xff4d3d);if(hp<=0){hp=0;endGame(false)}
+ }
+ for(let i=loot.length-1;i>=0;i--){if(player.position.distanceTo(loot[i].position)<1.2){scene.remove(loot[i]);loot.splice(i,1);coins+=5;say('INTEL COLLECTED +5');}}
+ if(guards.every(g=>!g.alive)&&player.position.distanceTo(exitZone.position)<2){level++;hp=Math.min(100,hp+20);makeLevel();say('MISSION COMPLETE — NEXT AREA!')}
+ updateHud();
+ let target=player.position.clone().add(new THREE.Vector3(Math.sin(cameraYaw)*10,8,Math.cos(cameraYaw)*10));camera.position.lerp(target,.08);camera.lookAt(player.position.x,player.position.y+1,player.position.z);
+ exitZone.rotation.y+=dt*.5;
+}
+let prev=performance.now();function loop(now){requestAnimationFrame(loop);let dt=Math.min((now-prev)/1000,.04);prev=now;if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)document.querySelector('#toast').textContent=''}update(dt);renderer.render(scene,camera)}requestAnimationFrame(loop);
+function start(){level=1;coins=0;kills=0;hp=100;makeLevel();document.querySelector('#start').style.display='none';document.querySelector('#gameover').style.display='none';gameActive=true}
+function endGame(win){gameActive=false;document.querySelector('#endtitle').textContent=win?'MISSION COMPLETE':'MISSION FAILED';document.querySelector('#endtext').textContent=`Level ${level} · ${kills} takedowns · ${coins} coins`;document.querySelector('#gameover').style.display='grid'}
+document.querySelector('#play').onclick=start;document.querySelector('#retry').onclick=start;
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key.toLowerCase()==='e')takedown();if(e.code==='Space'){e.preventDefault();attack()}});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;lastX=e.clientX});addEventListener('pointerup',()=>dragging=false);addEventListener('pointermove',e=>{if(dragging&&e.pointerType==='mouse'){cameraYaw-=(e.clientX-lastX)*.006;lastX=e.clientX}});
+document.querySelectorAll('[data-key]').forEach(b=>{let k=b.dataset.key;b.addEventListener('pointerdown',e=>{e.preventDefault();keys[k]=true});['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>keys[k]=false))});
+document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>{let a=b.dataset.action;if(a==='sneak')keys.Shift=!keys.Shift;if(a==='take')takedown();if(a==='attack')attack();if(a==='next'&&guards.every(g=>!g.alive)){level++;makeLevel()}}));
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+makeLevel();gameActive=false;
+</script>
+</body></html>
